@@ -33,15 +33,12 @@ def main():
     #o read this off from path_save string:
     parser.add_argument('-n_char',type=int,default=100,help='number of characters/classes')
     parser.add_argument('-images_per_char',type=int,default=18,help='number of training images per character')
-    ## increasing:
     parser.add_argument('-learning_rate',type=float,default=1e-3,help='learning rate for training')
-    ## (increasing:)
     parser.add_argument('-beta',type=float,default=0.0005,help='L2 regularization coefficient')
-    parser.add_argument('-batch_size',type=int,default=18,help='batch size for training')
+    parser.add_argument('-batch_size',type=int,default=72,help='batch size for training')  # originally: 18
     # unused unless optimizer depends on momentum:
-    parser.add_argument('-momentum',type=float,default=0.8,help='momentum')
-    ## increasing:
-    parser.add_argument('-dropout_rate',type=float,default=0.7,help='dropout rate')
+    # parser.add_argument('-momentum',type=float,default=0.8,help='momentum')
+    parser.add_argument('-dropout_rate',type=float,default=0.4,help='dropout rate')
 
     # this terminates training if early stopping never kicks in:
     parser.add_argument('-n_epochs',type=int,default=12,help='number of passes through training set')
@@ -54,7 +51,7 @@ def main():
     parser.add_argument('-size',type=int,default=4,help='overall size of convnet')
 
     # One-shot testing parameters
-    parser.add_argument('-path_save',type=str,default='n100size4_dropout7/cnn',help='path from which to load saved model')
+    parser.add_argument('-path_save',type=str,default='n100size4_batch72/cnn',help='path from which to load saved model')
     # Parameters for few-shot learning:
     parser.add_argument('-learn_rate_fewshot',type=float,default=0e-4,help='learning rate for few-shot learning')
     parser.add_argument('-learn_steps_fewshot',type=int,default=10,help='number of gradient steps per pair of matching images')
@@ -70,11 +67,10 @@ def main():
 
 
 def cnn(x,args):
-    "convolutional neural network"
+    "model function for convolutional neural network"
 
-    n_pixel = args.n_pixel  ## fix this to refer to main()
-    # note that n_class only affects the logits layer
-    n_class = args.n_char  ## fix this to refer to main(), to n_characters
+    n_pixel = args.n_pixel
+    n_class = args.n_char   # note that n_class only affects the final logits layer
 
     beta_cnn = 1.0 # this is redundant with beta in main() and so is set to 1.0 currently
 
@@ -82,18 +78,17 @@ def cnn(x,args):
 
     size = args.size  # Lake et. al. CNN size = 10
 
-    n_kernel = 5  # should be 5 for 28x28
+    n_kernel = 5  # downsamples to slightly lower resolution than 28x28; variation with n_kernel did not seem significant
     n_kernel_2 = 5
     n_features_1 = 12*size
     n_features_2 = 30*size
-    n_pool = 5  # was 5
-    n_stride = 5  # was 5
+    n_pool = 5  # default: 5
+    n_stride = 5  # default: 5
     n_pool_2 = 2
     n_stride_2 = 2
     n_dense = 300*size
 
-    # doesn't have to be an integer?
-    n_dense_input = (n_pixel // n_stride) // n_stride_2  # divide by n_stride not n_pool right?
+    n_dense_input = (n_pixel // n_stride) // n_stride_2
     n_dense_input = n_features_2 * n_dense_input * n_dense_input
 
     reg = tf.contrib.layers.l2_regularizer(scale=beta_cnn, scope=None)
@@ -133,15 +128,10 @@ def cnn(x,args):
         kernel_regularizer=reg)
 
     dropout = tf.layers.dropout(inputs=dense, rate=dropout_rate)
-    # omitting (define mode): training=mode == tf.estimator.ModeKeys.TRAIN)
 
     logits = tf.layers.dense(inputs=dropout, units=n_class)
 
     return logits, dense
-    # Generate predictions (for PREDICT and EVAL mode)
-    # Configure the Training Op (for TRAIN mode)
-    # evaluation metrics ...
-
 
 # a function for few-shot learning of the final layer of cnn
 def cnn_logit(features, n_class):
@@ -154,28 +144,25 @@ def score(f, f2):
 
     cosine_sq = np.tensordot(f,f2) * np.tensordot(f,f2) / np.tensordot(f,f) / np.tensordot(f2,f2)
     return cosine_sq
-    #o be sure this is operating correctly on the scalar elements of the np.tensordot() arrays; at least it outputs a scalar
 
-    # ALTERNATE:
-    # if f and f2 are logits, we can return a score of 1 if they prefer the same label:
-#    if np.argmax(f)==np.argmax(f2): return 1
-#    else: return 0
-
+    # ALTERNATE: if f and f2 are logits, we can return a score of 1 if they prefer the same label:
+    # if np.argmax(f)==np.argmax(f2): return 1
+    # else: return 0
 
 def image_array(filename):
     # load png image from filename and return numpy array for centered image
 
-    pixels = imread(filename,flatten=True)  # is there a faster way?
+    pixels = imread(filename,flatten=True)
     pixels = np.array(pixels,dtype=bool)
     pixels = np.logical_not(pixels)
 
-    (n_pixel, _) = np.shape(pixels)  # this works assuming square images
+    (n_pixel, _) = np.shape(pixels)  # this assumes square images
 
     [center_x, center_y] = center_of_mass(pixels)
-    center_x = int(n_pixel/2 - center_x)  #o might want to check whether int() and // round in same way, or are 1 pixel off
+    center_x = int(n_pixel/2 - center_x)
     center_y = int(n_pixel/2 - center_y)
 
-    pixels = np.roll(pixels, (center_x, center_y), axis=(0,1))  # ** not axis=(1,0) ?
+    pixels = np.roll(pixels, (center_x, center_y), axis=(0,1))
 
     pixels = np.reshape(pixels, (n_pixel, n_pixel, 1))
     return pixels.astype(int)
@@ -185,29 +172,28 @@ def one_hot_label_training(filename, n_class):
     # returns one-hot label from training data filename for image of character, assuming n_class different classes
 
     str_label = filename[-11:-7]
-    target = int(str_label)  # starts at 1, since background image filenames start with e.g. 0001_01.png
+    target = int(str_label)  # note: starts at 1, since background image filenames start with e.g. 0001_01.png
     return np.eye(n_class)[target-1]
 
 def one_hot_label_test(filename, n_class):
     # returns one-hot label from test data filename for image of character, assuming n_class different classes
 
     str_label = filename[9:11]
-    target = int(str_label)  # starts at 1, since filenames start with e.g. 0001_01.png
+    target = int(str_label)
     return np.eye(n_class)[target-1]
 
 
-# taken from demo_classification.py
-# input should be convert_to_inked()
-def ModHausdorffDistance(itemA,itemB):
+# taken from demo_classification.py, at github.com/brendenlake/omniglot
+def ModHausdorffDistance(itemA,itemB):  
 	# Modified Hausdorff Distance
-	#
-	# Input
-	#  itemA : [n x 2] coordinates of "inked" pixels
-	#  itemB : [m x 2] coordinates of "inked" pixels
-	#
 	#  M.-P. Dubuisson, A. K. Jain (1994). A modified hausdorff distance for object matching.
 	#  International Conference on Pattern Recognition, pp. 566-568.
-	#
+
+	# Input
+        #  itemA, itemB: should be output from convert_to_inked()
+	#  itemA : [n x 2] coordinates of "inked" pixels
+	#  itemB : [m x 2] coordinates of "inked" pixels
+
 	D = cdist(itemA,itemB)
 	mindist_A = D.min(axis=1)
 	mindist_B = D.min(axis=0)
@@ -215,17 +201,19 @@ def ModHausdorffDistance(itemA,itemB):
 	mean_B = np.mean(mindist_B)
 	return max(mean_A,mean_B)
 
-# taken from demo_classification.py
+# taken from demo_classification.py, at github.com/brendenlake/omniglot
 def convert_to_inked(filename):
+
 	# Load image file and return coordinates of 'inked' pixels in the binary image
-	# Output:
+
+        # Output:
 	#  D : [n x 2] rows are coordinates
 
-        pixels = imread(filename,flatten=True)  # is there a faster way?
+        pixels = imread(filename,flatten=True)
         pixels = np.array(pixels,dtype=bool)
         I = np.logical_not(pixels)
 
-	(row,col) = I.nonzero()
+ 	(row,col) = I.nonzero()
 	D = np.array([row,col])
 	D = np.transpose(D)
 	D = D.astype(float)
@@ -238,7 +226,7 @@ def convert_to_inked(filename):
 def center_of_mass(I):
         # modified from convert_to_inked()
 	# Load image file and return coordinates of center-of-mass pixel
-	# Input should come from np.logical_not(pixels)
+	# Input should come from np.logical_not()
 
 	(row,col) = I.nonzero()
 	D = np.array([row,col])
@@ -290,13 +278,9 @@ def train(args):
             logits=y_conv[0])  #o recall y_conv = (logits, dense)
 
     loss = tf.reduce_mean(loss)
-    loss_0 = loss  # loss_0 is just the unregulated cross-entropy; use this for validation
+    loss_0 = loss  # loss_0 is just the unregulated cross-entropy; use this for validation cost
     reg_loss = tf.losses.get_regularization_loss(scope=None, name='total_regularization_loss')
-    # this is including kernel_regularization arguments in cnn layers because reg_loss varies with the scale in regularizer in cnn()
     loss += beta * reg_loss
-#   PROBLEM "No weights to regularize" ... I think weights have not been added to GraphKeys.WEIGHTS collection ... cf. RBM_CDL_copy directory
-#    l2_regularizer = tf.contrib.layers.l2_regularizer(scale=1.0, scope=None)
-#    loss += beta * tf.contrib.layers.apply_regularization(l2_regularizer)
 
     with tf.name_scope('optimizer'):
         train_step = optimizer.minimize(loss)
@@ -320,8 +304,8 @@ def train(args):
 
     bcount = 0
     i_epochs = 0
-    mode = 'w'  # this ensures that we write data to an empty file
-    vcost_list = []  # store validation cost over time
+    mode = 'w'  # this ensures that we write data to an initially empty file
+    vcost_list = []  # store validation cost over training time
     for i in range(n_batch_iterations):
 
         if (i * bsize) % train_size == 0:  # checked that this is working correctly
@@ -333,7 +317,7 @@ def train(args):
         # confirmed: this divides up filenames into lists for each batch
         batch_filenames=filenames[bcount*bsize: bcount*bsize + bsize]
 
-        batch_x = np.zeros([bsize,n_pixel,n_pixel,1])  # extra "1" argument needed b/c 1 black/white channel? (tf.layers expect this?)
+        batch_x = np.zeros([bsize,n_pixel,n_pixel,1])
         batch_y = np.zeros([bsize,n_characters])
 
         # prepare (x,y)'s for the current batch
@@ -361,7 +345,7 @@ def train(args):
                 n = len(vcost_list)
                 n_min = n - n_vcost  # use this below to truncate to the last n_vcost elements
                 vcost_ave = sum(vcost_list[n_min:n]) / n_vcost
-                #o currently this does NOT any previous contents of the file (b/c of mode = 'a' below)
+                #o note: currently this does NOT remove any previous contents of the file (b/c of mode = 'a' below)
                 file = open('vcost_ave.txt',mode)
                 file.write('{' + str(i) + ',' + str(vcost_ave) + '},')
                 file.close()
@@ -382,9 +366,8 @@ def train(args):
         bcount += 1
         print('Batch %d' % bcount)
 
-    # ** can replace 'cnn' string with parameter-dependent string...
     saver = tf.train.Saver()
-    save_path = saver.save(sess, 'cnn')
+    save_path = saver.save(sess, 'cnn')  # adjust name 'cnn' of file for model parameters as needed
     print("Model saved in path: %s" % save_path)
 
 
@@ -394,30 +377,23 @@ def oneshot(args):
     alphabet_list = os.listdir(eval_dir)
 
     n_alphabets = 20
-    n_questions = 50  # number of questions per alphabet; note error ~? 1/sqrt(N) where N=n_alphabets*n_questions
-    n_choices = 20
+    n_questions = 60  # number of questions per alphabet; noise in error rate decreases with n_questions
+    n_choices = 20  # number of possible 'match' images to choose from
 
     learn_rate = args.learn_rate_fewshot
     oneshot_steps = args.learn_steps_fewshot
     optimizer = tf.train.AdamOptimizer(learn_rate)
 
-    #o these are currently just copied from train()
     n_pixel = args.n_pixel
     size = args.size
-    n_dense = 300*size
+    n_dense = 300*size  # number of hidden units in dense layer
 
     x = tf.placeholder(tf.float32, [None, n_pixel, n_pixel, 1])
-    y_conv = cnn(x,args)  #o change to cnn_out ?
-
-    # IF NEW SESSION OR INITIALIZATION, BE SURE TRAINED WEIGHTS ARE UNCHANGED
-    #o is this redundant with above?:
-    # sess = tf.Session()
-    #o just global vars needed?
-    # sess.run(tf.global_variables_initializer())
+    y_conv = cnn(x,args)
 
     sess = tf.Session()
 
-    # load the cnn parameters from saved file
+    # load the cnn model parameters from saved file
     saver = tf.train.Saver()
     path_save = args.path_save
     saver.restore(sess, path_save)
@@ -558,23 +534,7 @@ def oneshot(args):
 
             print('%d questions asked so far' % nq)
             print('cumulative ERROR RATE for ALL alphabets = %f' % error_rate)
-
-            # ** cost_eval = sess.run(loss, feed_dict= ... )
             
-            # y_x_predict = sess.run(y, feed_dict={f_: f})
-            # y_match_predict = sess.run(y, feed_dict={f_: f2})  # note f2 should now be stored for the matching image
-            
-
-            # FEW-SHOT LEARNING after EACH QUESTION:
-            # train logit layer on the pair of matching images
-
-#            for _ in range(oneshot_steps):
-#                sess.run(train_step, feed_dict={f_: [f,f2], y_: [y_x,y_match]})
-
-            # WHAT MAKES SENSE? WHAT TO EXPECT? IS THIS THE RIGHT TEST??
-            # ***** I would like a loop for each character, iterating over M match pairs and learning each time
-
-
             # OPTIONAL: print filenames of relevant images
             # print('Image:')
             # print(filename_x)
@@ -583,24 +543,19 @@ def oneshot(args):
             # print('Guess for Match:')
             # print(path_alphabet + char_choice_list[guess] + '/' + char_options_list[guess])
 
+            # Softmax output from cnn model:
+            # y_x_predict = sess.run(y, feed_dict={f_: f})
+            # y_match_predict = sess.run(y, feed_dict={f_: f2})  # note f2 should now be stored for the matching image
+
+
+            # FEW-SHOT LEARNING after EACH QUESTION:
+            # train logit layer on the pair of matching images
+            # for _ in range(oneshot_steps):
+            #     sess.run(train_step, feed_dict={f_: [f,f2], y_: [y_x,y_match]})
+
+            # add a a loop for each character, iterating over M match pairs and learning each time
+
 
 if __name__ == "__main__":
     main()
     # tf.app.run()
-
-
-# SCRAP CODE:
-# returns scores of the candidate match images
-#def scores(x_, x_list):
-
-#    n_choices = len(x_list)
-#    print('n_choices = %d' % n_choices)
-
-    # make a list? not tensor?
-#    scores = []
-
-#    for i in range(n_choices):
-#        score = tf.tensordot(cnn(x_,eval=True), cnn(x_list[i],eval=True), 2)  # 3rd argument = axes = 2?
-#        scores.append(score)
-
-#    return scores
