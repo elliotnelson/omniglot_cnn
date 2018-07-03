@@ -429,24 +429,24 @@ def oneshot(args):
         ## character_list = character_list[0:n_characters_eval] ## truncate the alphabet for now
         ## if n_choices>n_characters_eval:
 
-#        scopename = 'one_shot' + '_' + str(i)
+        # *** BEGIN block of code for few-shot learning on evaluation alphabets, using the pre-trained model
 
-        # build the final layer graph for the current alphabet
-#        with tf.variable_scope(scopename):  # initialization below worked with enough variables included under this scope
-#            f_ = tf.placeholder(tf.float32, [None, 1, n_dense])
-#            y = cnn_logit(f_, n_char_eval)
-#            y_ = tf.placeholder(tf.float32, [None, n_char_eval])
-            # LOSS to minimize for the current alphabet
-            #o with tf.name_scope('loss'):
-#            loss = tf.nn.softmax_cross_entropy_with_logits(
-#                labels=y_,
-#                logits=y)
-#            train_step = optimizer.minimize(loss)  # train_step must be under scope referred to in vars_oneshot below
-        # I don't think we need to specify var_list=vars_oneshot, since as long as we input features f_ we're only training the final layer anyways
+        # scopename = 'one_shot' + '_' + str(i)
 
-        # restrict initialization to just the final layer, cnn_logit()
-#        vars_oneshot = tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES, scope=scopename)
-#        sess.run(tf.variables_initializer(vars_oneshot))
+        ## Build the final layer graph for the current alphabet:
+        # with tf.variable_scope(scopename):  # initialization below worked with enough variables included under this scope
+        #    f_ = tf.placeholder(tf.float32, [None, 1, n_dense])
+        #    y = cnn_logit(f_, n_char_eval)
+        #    y_ = tf.placeholder(tf.float32, [None, n_char_eval])
+        # LOSS to minimize for the current alphabet
+        #    loss = tf.nn.softmax_cross_entropy_with_logits(labels=y_, logits=y)
+        #    train_step = optimizer.minimize(loss)
+
+        ## restrict initialization to just the final layer, cnn_logit()
+        # vars_oneshot = tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES, scope=scopename)
+        # sess.run(tf.variables_initializer(vars_oneshot))
+
+        # *** END block of code for few-shot learning on evaluation alphabets, using the pre-trained model
 
         # to confirm that y_conv dense layer output from disk is unchanged, confirming that weights from disk are being used
         # print('a black image yields logits:')
