@@ -185,55 +185,55 @@ def one_hot_label_test(filename, n_class):
 
 # taken from demo_classification.py, at github.com/brendenlake/omniglot
 def ModHausdorffDistance(itemA,itemB):  
-	# Modified Hausdorff Distance
-	#  M.-P. Dubuisson, A. K. Jain (1994). A modified hausdorff distance for object matching.
-	#  International Conference on Pattern Recognition, pp. 566-568.
+    # Modified Hausdorff Distance
+    #  M.-P. Dubuisson, A. K. Jain (1994). A modified hausdorff distance for object matching.
+    #  International Conference on Pattern Recognition, pp. 566-568.
 
-	# Input
-        #  itemA, itemB: should be output from convert_to_inked()
-	#  itemA : [n x 2] coordinates of "inked" pixels
-	#  itemB : [m x 2] coordinates of "inked" pixels
+    # Input
+    #  itemA, itemB: should be output from convert_to_inked()
+    #  itemA : [n x 2] coordinates of "inked" pixels
+    #  itemB : [m x 2] coordinates of "inked" pixels
 
-	D = cdist(itemA,itemB)
-	mindist_A = D.min(axis=1)
-	mindist_B = D.min(axis=0)
-	mean_A = np.mean(mindist_A)
-	mean_B = np.mean(mindist_B)
-	return max(mean_A,mean_B)
+    D = cdist(itemA,itemB)
+    mindist_A = D.min(axis=1)
+    mindist_B = D.min(axis=0)
+    mean_A = np.mean(mindist_A)
+    mean_B = np.mean(mindist_B)
+    return max(mean_A,mean_B)
 
 # taken from demo_classification.py, at github.com/brendenlake/omniglot
 def convert_to_inked(filename):
 
-	# Load image file and return coordinates of 'inked' pixels in the binary image
+    # Load image file and return coordinates of 'inked' pixels in the binary image
 
-        # Output:
-	#  D : [n x 2] rows are coordinates
+    # Output:
+    #  D : [n x 2] rows are coordinates
 
-        pixels = imread(filename,flatten=True)
-        pixels = np.array(pixels,dtype=bool)
-        I = np.logical_not(pixels)
+    pixels = imread(filename,flatten=True)
+    pixels = np.array(pixels,dtype=bool)
+    I = np.logical_not(pixels)
 
- 	(row,col) = I.nonzero()
-	D = np.array([row,col])
-	D = np.transpose(D)
-	D = D.astype(float)
-	n = D.shape[0]
-	mean = np.mean(D,axis=0)
-	for i in range(n):
-		D[i,:] = D[i,:] - mean
-	return D
+    (row,col) = I.nonzero()
+    D = np.array([row,col])
+    D = np.transpose(D)
+    D = D.astype(float)
+    n = D.shape[0]
+    mean = np.mean(D,axis=0)
+    for i in range(n):
+       	D[i,:] = D[i,:] - mean
+    return D
 
 def center_of_mass(I):
-        # modified from convert_to_inked()
-	# Load image file and return coordinates of center-of-mass pixel
-	# Input should come from np.logical_not()
+    # modified from convert_to_inked()
+    # Load image file and return coordinates of center-of-mass pixel
+    # Input should come from np.logical_not()
 
-	(row,col) = I.nonzero()
-	D = np.array([row,col])
-	D = np.transpose(D)
-	D = D.astype(float)
-	n = D.shape[0]
-	return np.mean(D,axis=0)
+    (row,col) = I.nonzero()
+    D = np.array([row,col])
+    D = np.transpose(D)
+    D = D.astype(float)
+    n = D.shape[0]
+    return np.mean(D,axis=0)
 
 def train(args):
 
@@ -399,35 +399,19 @@ def oneshot(args):
     saver.restore(sess, path_save)
     print("Model loaded from files: " + path_save)
 
-    # OPTIONAL - TEST IMAGE, y(x) as proxy for weight values
-    # image_ones = np.ones([1,n_pixel,n_pixel,1])  # extra "1" argument needed b/c 1 black/white channel? (tf.layers expect this?)
-    # print('a black image yields logits:')
-    # print(sess.run(y_conv, feed_dict={x: image_ones}))
-    # OR, use actual DATA as a TEST IMAGE:
-    # filename_test = '/Users/elliot/Python/omniglot/python/images_bg/0001_01.png'
-    # image_test = image_array(filename_test)
-    # label_test = one_hot_label_training(filename_test, n_characters)
-    # logit_test = sess.run(y_conv[0], feed_dict={x: [image_test]})
-    # if np.argmax(logit_test)==np.argmax(label_test): print("Test image CORRECTLY labelled")
-    # else: print("Test image FAIL")
-
     points = 0
     points_available = 0
 
-    # confirmed: this correctly picks an image as filename_x,
+    # confirmed: this loop correctly picks an image as filename_x,
     # with image of same character as last element of char_options_list, with file name = filename_choice when i=n_choices-1
     for i in range(n_alphabets):
 
-        path_alphabet = eval_dir + alphabet_list[i] + '/'  ## previously: '/Users/elliot/Python/omniglot/python/images_background/Tifinagh/'
+        path_alphabet = eval_dir + alphabet_list[i] + '/'
         print('Evaluating with images from:')
         print(path_alphabet)
         character_list = os.listdir(path_alphabet)
         n_char_eval = len(character_list)
 
-        ## n_characters_eval = 10  ## number of characters in evaluation set
-        ## if n_characters_eval<len(character_list):
-        ## character_list = character_list[0:n_characters_eval] ## truncate the alphabet for now
-        ## if n_choices>n_characters_eval:
 
         # *** BEGIN block of code for few-shot learning on evaluation alphabets, using the pre-trained model
 
@@ -448,11 +432,16 @@ def oneshot(args):
 
         # *** END block of code for few-shot learning on evaluation alphabets, using the pre-trained model
 
-        # to confirm that y_conv dense layer output from disk is unchanged, confirming that weights from disk are being used
+
+        # Optional: Use an image of all-black pixels to compute y(x)
+        # ...to confirm that y_conv dense layer output from saved cnn is unchanged,
+        # ...confirming that saved cnn weights are being held fixed
+        # image_ones = np.ones([1,n_pixel,n_pixel,1])
         # print('a black image yields logits:')
         # print(sess.run(y_conv, feed_dict={x: image_ones}))
 
-        # ask a number of questions with each chosen alphabet
+
+        # ask a number of questions with each chosen alphabet:
         for nq in range(n_questions):
 
             # choose n_choices random characters:
