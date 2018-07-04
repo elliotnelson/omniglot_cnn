@@ -9,6 +9,7 @@ import numpy as np
 import tensorflow as tf
 
 import os
+import math
 import argparse
 import sys
 import tempfile
@@ -34,24 +35,27 @@ def main():
     parser.add_argument('-n_char',type=int,default=100,help='number of characters/classes')
     parser.add_argument('-images_per_char',type=int,default=18,help='number of training images per character')
     parser.add_argument('-learning_rate',type=float,default=1e-3,help='learning rate for training')
-    parser.add_argument('-beta',type=float,default=0.0005,help='L2 regularization coefficient')
-    parser.add_argument('-batch_size',type=int,default=72,help='batch size for training')  # originally: 18
+    parser.add_argument('-beta',type=float,default=0.05,help='L2 regularization coefficient')
+    parser.add_argument('-batch_size',type=int,default=18,help='batch size for training')  # originally: 18
     # unused unless optimizer depends on momentum:
     # parser.add_argument('-momentum',type=float,default=0.8,help='momentum')
     parser.add_argument('-dropout_rate',type=float,default=0.4,help='dropout rate')
-
+    parser.add_argument('-w_mean_init',type=float,default=0.0,help='mean for random normal weight initialization')
+    parser.add_argument('-w_stddev_init',type=float,default=1.0,help='standard deviation for random normal weight initialization, before dividing by sqrt(n_weights)')
+    
     # this terminates training if early stopping never kicks in:
-    parser.add_argument('-n_epochs',type=int,default=12,help='number of passes through training set')
+    parser.add_argument('-n_epochs',type=int,default=30,help='number of passes through training set')
     parser.add_argument('-early_stopping',type=bool,default=True,help='Boolean for early stopping with validation data')
     ## -
     parser.add_argument('-validation_freq',type=int,default=10,help='frequency with which we calculate the validation cost (which seems costly to compute); should increase with n_characters')
-    parser.add_argument('-n_vcost',type=int,default=10,help='timescale over which to average the validation cost, as it decreases')
+    parser.add_argument('-n_vcost',type=int,default=20,help='timescale over which to average the validation cost, as it decreases')
 
     #o ideally, when used in oneshot(), read this off of path_save string:
     parser.add_argument('-size',type=int,default=4,help='overall size of convnet')
 
     # One-shot testing parameters
-    parser.add_argument('-path_save',type=str,default='n100size4_batch72/cnn',help='path from which to load saved model')
+    parser.add_argument('-path_save',type=str,default='n100size4_L2pt05/cnn',help='path from which to load saved model')
+
     # Parameters for few-shot learning:
     parser.add_argument('-learn_rate_fewshot',type=float,default=0e-4,help='learning rate for few-shot learning')
     parser.add_argument('-learn_steps_fewshot',type=int,default=10,help='number of gradient steps per pair of matching images')
@@ -72,6 +76,9 @@ def cnn(x,args):
     n_pixel = args.n_pixel
     n_class = args.n_char   # note that n_class only affects the final logits layer
 
+    w_mean_0 = args.w_mean_init
+    w_stddev_0 = args.w_stddev_init
+    
     beta_cnn = 1.0 # this is redundant with beta in main() and so is set to 1.0 currently
 
     dropout_rate = args.dropout_rate
@@ -91,6 +98,9 @@ def cnn(x,args):
     n_dense_input = (n_pixel // n_stride) // n_stride_2
     n_dense_input = n_features_2 * n_dense_input * n_dense_input
 
+    w_dense_init = tf.random_normal_initializer(mean=w_mean_0, stddev=w_stddev_0/math.sqrt(n_dense_input))
+    w_logit_init = tf.random_normal_initializer(mean=w_mean_0, stddev=w_stddev_0/math.sqrt(n_dense))
+    
     reg = tf.contrib.layers.l2_regularizer(scale=beta_cnn, scope=None)
 
     # downsample first:
@@ -125,11 +135,12 @@ def cnn(x,args):
         inputs=pool2_flat,
         units=n_dense,
         activation=tf.nn.relu,
+        kernel_initializer=w_dense_init,
         kernel_regularizer=reg)
 
     dropout = tf.layers.dropout(inputs=dense, rate=dropout_rate)
 
-    logits = tf.layers.dense(inputs=dropout, units=n_class)
+    logits = tf.layers.dense(inputs=dropout, units=n_class, kernel_initializer=w_logit_init)
 
     return logits, dense
 
@@ -175,6 +186,8 @@ def one_hot_label_training(filename, n_class):
     target = int(str_label)  # note: starts at 1, since background image filenames start with e.g. 0001_01.png
     return np.eye(n_class)[target-1]
 
+#ooo I'm not sure this is correct -- filenames don't start at 0001_01.png for test images...
+#ooo Currently this is only used for #few-shot training
 def one_hot_label_test(filename, n_class):
     # returns one-hot label from test data filename for image of character, assuming n_class different classes
 
@@ -242,8 +255,8 @@ def train(args):
     train_size = n_characters * images_per_character
 
     # import data
-    train_dir = '/Users/elliot/Python/omniglot/python/images_bg/'
-    filenames = os.listdir(train_dir)
+    train_dir = '/home/enelson/omniglot_cnn/images_bg/'
+    filenames = sorted(os.listdir(train_dir))  # sorted() necessary on orangutan
 
     # choose the first train_size training images and train over a subset:
     filenames = filenames[0:train_size]
@@ -286,14 +299,15 @@ def train(args):
         train_step = optimizer.minimize(loss)
 
     # VALIDATION
-    validate_dir = '/Users/elliot/Python/omniglot/python/images_validate/'
-    filenames_v = os.listdir(validate_dir)
+    validate_dir = '/home/enelson/omniglot_cnn/images_validate/'
+    filenames_v = sorted(os.listdir(validate_dir))  # sorted() necessary on orangutan
+    
     validation_size = n_characters * 2
     filenames_v = filenames_v[0:validation_size]
 
     x_v = np.zeros([validation_size,n_pixel,n_pixel,1])
     y_v = np.zeros([validation_size,n_characters])
-
+    
     for k in range(validation_size):
         filename = validate_dir + filenames_v[k]
         x_v[k] = image_array(filename)
@@ -322,7 +336,8 @@ def train(args):
 
         # prepare (x,y)'s for the current batch
         for j in range(bsize):
-            filename = '/Users/elliot/Python/omniglot/python/images_bg/' + batch_filenames[j]
+            filename = '/home/enelson/omniglot_cnn/images_bg/' + batch_filenames[j]
+            # filename = '/Users/elliot/Python/omniglot/python/images_bg/' + batch_filenames[j]
             batch_x[j] = image_array(filename)
             batch_y[j] = one_hot_label_training(filename, n_characters)
 
@@ -367,23 +382,24 @@ def train(args):
         print('Batch %d' % bcount)
 
     saver = tf.train.Saver()
-    save_path = saver.save(sess, 'cnn')  # adjust name 'cnn' of file for model parameters as needed
+    save_path = saver.save(sess, '/home/enelson/omniglot_cnn/cnn')  # adjust name 'cnn' of file for model parameters as needed
     print("Model saved in path: %s" % save_path)
 
 
 def oneshot(args):
 
-    eval_dir = '/Users/elliot/Python/omniglot/python/images_evaluation/'
+    eval_dir = '/home/enelson/omniglot_cnn/images_evaluation/'
+    # eval_dir = '/Users/elliot/Python/omniglot/python/images_evaluation/'
     alphabet_list = os.listdir(eval_dir)
 
     n_alphabets = 20
-    n_questions = 60  # number of questions per alphabet; noise in error rate decreases with n_questions
+    n_questions = 40  # number of questions per alphabet; noise in error rate decreases with n_questions
     n_choices = 20  # number of possible 'match' images to choose from
 
     learn_rate = args.learn_rate_fewshot
     oneshot_steps = args.learn_steps_fewshot
     optimizer = tf.train.AdamOptimizer(learn_rate)
-
+    
     n_pixel = args.n_pixel
     size = args.size
     n_dense = 300*size  # number of hidden units in dense layer
