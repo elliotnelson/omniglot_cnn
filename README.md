@@ -2,6 +2,8 @@
 
 This repository includes a TensorFlow implementation of a convolutional neural network (CNN) for one-shot classification of images in the [Omniglot](https://github.com/brendenlake/omniglot) dataset. I am attempting to replicate the performance in [Lake et. al., ''Human-level concept learning through probabilistic program induction''](http://www.sciencemag.org/content/350/6266/1332.short), which achieved 13.5% error with a CNN classifier.
 
+(In order to run this program, the [Omniglot](https://github.com/brendenlake/omniglot) background and evaluation images must be collected in respective directories and appropriately referenced from the python file. The validation directory is assumed to contain 2 images of each character from the background dataset, and the training directory the remaining 18.)
+
 Thus far I have gotten close to 30% error, but still have a ways to go to match the performance in Lake et. al.  I have implemented their exact architecture (aside from downsampling to a slightly lower resolution, which does not appear to substantially affect performance), and am trying to diagnose the limiting factor(s) in the optimization.  Performance on test data does not improve with continued training past early stopping, nor does the validation cost fall substantially, so I expect improvement will come from adjusting hyperparameters to decrease the asymptotic validation cost.
 
 This code can also be used to study few-shot learning on evaluation alphabets, after pre-training with background alphabets, in order to see how rapidly new characters can be learned and distinguished with prior knowledge from pre-training.
